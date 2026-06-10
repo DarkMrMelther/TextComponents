@@ -24,7 +24,7 @@ fn main() -> Result<(), String> {
         "tellraw @p {}",
         component.build(&NoResolutor, NbtBuilder).to_snbt()
     );
-    println!("{:p}", component);
+    println!("{}", component.log());
 
     let nbt = "Holly molly I can get TextComponents from NBTs!"
         .color(Color::Red)
@@ -41,6 +41,6 @@ fn main() -> Result<(), String> {
     let component = RawTextComponent::from_nbt(&nbt)
         .ok_or(String::from("Cannot recompose the TextComponent!"))?;
     println!("{:?}", component);
-    println!("{:p}", component);
+    println!("{}", component.log());
     Ok(())
 }

@@ -13,5 +13,5 @@ fn main() {
         }",
     )
     .unwrap();
-    println!("{:p}", component)
+    println!("{}", component.log())
 }

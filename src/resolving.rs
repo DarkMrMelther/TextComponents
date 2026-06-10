@@ -159,6 +159,21 @@ impl<'a> RawTextComponent<'a> {
     ) -> S::Result {
         target.build_component(resolutor, &self.resolve(resolutor))
     }
+    pub fn batch_build<'a, R: TextResolutor + ?Sized, S: BuildTarget>(
+        &self,
+        resolutors: Vec<&'a R>,
+        target: fn() -> S,
+    ) -> Vec<(&'a R, S::Result)> {
+        resolutors
+            .into_iter()
+            .map(|resolutor| {
+                (
+                    resolutor,
+                    target().build_component(resolutor, &self.resolve(resolutor)),
+                )
+            })
+            .collect()
+    }
 
     /// Resolves all dynamic parts of the component recursively.
     ///
@@ -209,6 +224,15 @@ impl<'a> RawTextComponent<'a> {
 
         component
     }
+    pub fn batch_resolve<'a, R: TextResolutor + ?Sized>(
+        &self,
+        resolutors: Vec<&'a R>,
+    ) -> Vec<(&'a R, TextComponent)> {
+        resolutors
+            .into_iter()
+            .map(|resolutor| (resolutor, self.resolve(resolutor)))
+            .collect()
+    }
 }
 
 /// A target format for building a resolved text component.
@@ -230,5 +254,22 @@ pub trait BuildTarget<'a> {
         &self,
         resolutor: &R,
         component: &RawTextComponent<'a>,
-    ) -> Self::Result;
+    ) -> Self::Result
+    where
+        Self: Sized;
+}
+
+impl<T: BuildTarget> BuildTarget for Box<T> {
+    type Result = T::Result;
+
+    fn build_component<R: TextResolutor + ?Sized>(
+        &self,
+        resolutor: &R,
+        component: &TextComponent,
+    ) -> Self::Result
+    where
+        Self: Sized,
+    {
+        (**self).build_component(resolutor, component)
+    }
 }

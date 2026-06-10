@@ -18,7 +18,7 @@ fn main() {
     match component {
         Ok(component) => {
             println!("{:?}", component);
-            println!("{:p}", component)
+            println!("{}", component.log())
         }
         Err(e) => eprintln!("{}", e),
     }

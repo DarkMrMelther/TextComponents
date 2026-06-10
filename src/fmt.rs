@@ -5,11 +5,11 @@ use crate::{
     interactivity::{ClickEvent, Interactivity},
     resolving::{BuildTarget, NoResolutor, TextResolutor},
 };
-use colored::{ColoredString, Colorize};
 use rand::random_range;
 use std::{
     borrow::Cow,
-    fmt::{self, Debug, Display, Formatter, Pointer},
+    fmt::{self, Debug, Formatter},
+    sync::OnceLock,
 };
 use supports_hyperlinks::supports_hyperlinks;
 
@@ -62,22 +62,19 @@ const OBFUSCATION_CHARS: [char; 822] = [
 
 pub struct TextBuilder;
 impl TextBuilder {
-    fn stringify_content<'a, R: TextResolutor<'a> + ?Sized, S: BuildTarget<'a>>(
+    fn stringify_content<'a, R: TextResolutor<'a> + ?Sized, S: BuildTarget<'a, Result = String>>(
         target: &S,
         resolutor: &R,
         component: &RawTextComponent<'a>,
-    ) -> S::Result
-    where
-        S::Result: From<String> + ToString + Display,
-    {
+    ) -> String {
         match &component.content {
-            Content::Text { text } => text.to_string().into(),
+            Content::Text { text } => text.to_string(),
             Content::Translate(message) => {
                 let translated = match resolutor.translate(&message.key) {
                     Some(t) => t,
                     None => match &message.fallback {
-                        Some(f) => return f.to_string().into(),
-                        None => return format!("[Translation: {}]", message.key).into(),
+                        Some(f) => return f.to_string(),
+                        None => return format!("[Translation: {}]", message.key),
                     },
                 };
                 let parts = resolutor.split_translation(translated);
@@ -88,11 +85,7 @@ impl TextBuilder {
                         format: component.format.clone(),
                         ..RawTextComponent::new()
                     };
-                    built_parts.push(
-                        target
-                            .build_component(resolutor, &component_part)
-                            .to_string(),
-                    );
+                    built_parts.push(target.build_component(resolutor, &component_part));
                     if pos != 0
                         && let Some(args) = &message.args
                         && pos <= args.len()
@@ -104,25 +97,25 @@ impl TextBuilder {
                             format: arg.format.mix(&component.format),
                             interactions: arg.interactions.clone(),
                         };
-                        built_parts.push(target.build_component(resolutor, &arg_part).to_string());
+                        built_parts.push(target.build_component(resolutor, &arg_part));
                     }
                 }
-                built_parts.concat().into()
+                built_parts.concat()
             }
-            Content::Keybind { keybind } => format!("[Keybind: {}]", keybind).into(),
-            Content::Object(Object::Atlas { sprite, .. }) => format!("[Object: {}]", sprite).into(),
+            Content::Keybind { keybind } => format!("[Keybind: {}]", keybind),
+            Content::Object(Object::Atlas { sprite, .. }) => format!("[Object: {}]", sprite),
             Content::Object(Object::Player { player, .. }) => {
                 if let Some(name) = &player.name {
-                    return format!("[Head: {}]", name).into();
+                    return format!("[Head: {}]", name);
                 }
                 if let Some(id) = &player.id {
-                    return format!("[Head: {:?}]", id).into();
+                    return format!("[Head: {:?}]", id);
                 }
-                String::from("[Head]").into()
+                String::from("[Head]")
             }
-            Content::Resolvable(_) => String::from("[Resolvable]").into(), // Just in case ;)
+            Content::Resolvable(_) => String::from("[Resolvable]"), // Just in case ;)
             #[cfg(feature = "custom")]
-            Content::Custom { .. } => String::from("[Custom]").into(),
+            Content::Custom { .. } => String::from("[Custom]"),
         }
     }
 }
@@ -143,14 +136,23 @@ impl<'a> BuildTarget<'a> for TextBuilder {
     }
 }
 
+const URL_START: &'static str = "\x1b]8;;";
+const URL_SEPARATOR: &'static str = "\x1b\\";
+const URL_END: &'static str = "\x1b]8;;\x1b\\";
+const BOLD: &'static str = "\x1b[1m";
+const ITALIC: &'static str = "\x1b[3m";
+const UNDERLINED: &'static str = "\x1b[4m";
+const STRIKETHROUGH: &'static str = "\x1b[9m";
+const BG_COLOR: &'static str = "\x1b[48;2;";
+const RESET: &'static str = "\x1b[0m";
 pub struct PrettyTextBuilder;
 impl<'a> BuildTarget<'a> for PrettyTextBuilder {
-    type Result = ColoredString;
+    type Result = String;
     fn build_component<R: TextResolutor<'a> + ?Sized>(
         &self,
         resolutor: &R,
         component: &RawTextComponent<'a>,
-    ) -> ColoredString {
+    ) -> String {
         let mut final_text = TextBuilder::stringify_content(self, resolutor, component);
 
         if let Content::Translate(_) = component.content {
@@ -167,16 +169,15 @@ impl<'a> BuildTarget<'a> for PrettyTextBuilder {
                             format: child.format.mix(&component.format),
                             interactions: child.interactions.clone(),
                         };
-                        self.build_component(resolutor, &child).to_string()
+                        self.build_component(resolutor, &child)
                     })
                     .collect::<Vec<String>>()
                     .concat()
-            )
-            .into();
+            );
         }
 
         if let Some(true) = component.format.obfuscated {
-            let obfuscated = final_text
+            final_text = final_text
                 .chars()
                 .map(|char| {
                     if !char.is_whitespace() && !char.is_control() {
@@ -185,35 +186,39 @@ impl<'a> BuildTarget<'a> for PrettyTextBuilder {
                     char
                 })
                 .collect::<String>();
-            final_text = ColoredString::from(obfuscated);
         }
         if let Some(color) = &component.format.color {
-            final_text = color.colorize_text(final_text.to_string());
+            color.colorize_text(&mut final_text);
         }
         if let Some(true) = component.format.bold {
-            final_text = final_text.bold();
+            final_text.insert_str(0, BOLD);
         }
         if let Some(true) = component.format.italic {
-            final_text = final_text.italic();
+            final_text.insert_str(0, ITALIC);
         }
         if let Some(true) = component.format.underlined {
-            final_text = final_text.underline();
+            final_text.insert_str(0, UNDERLINED);
         }
         if let Some(true) = component.format.strikethrough {
-            final_text = final_text.strikethrough();
+            final_text.insert_str(0, STRIKETHROUGH);
         }
         if let Some(color) = component.format.shadow_color {
-            final_text = final_text.on_truecolor(
-                ((color >> 16) & 0xFF) as u8,
-                ((color >> 8) & 0xFF) as u8,
-                (color & 0xFF) as u8,
+            final_text.insert_str(
+                0,
+                &format!(
+                    "{BG_COLOR}{};{};{}m",
+                    ((color >> 16) & 0xFF) as u8,
+                    ((color >> 8) & 0xFF) as u8,
+                    (color & 0xFF) as u8,
+                ),
             );
         }
         if supports_hyperlinks()
             && let Some(ClickEvent::OpenUrl { url }) = &component.interactions.click
         {
-            final_text = format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, final_text).into();
+            final_text = format!("{URL_START}{}{URL_SEPARATOR}{}{URL_END}", url, final_text);
         }
+        final_text.push_str(RESET);
 
         format!(
             "{}{}",
@@ -228,7 +233,7 @@ impl<'a> BuildTarget<'a> for PrettyTextBuilder {
                         format: child.format.mix(&component.format),
                         interactions: child.interactions.clone(),
                     };
-                    self.build_component(resolutor, &child).to_string()
+                    self.build_component(resolutor, &child)
                 })
                 .collect::<Vec<String>>()
                 .concat()
@@ -241,33 +246,35 @@ impl<'a> RawTextComponent<'a> {
     pub fn to_plain<R: TextResolutor<'a> + ?Sized>(&self, resolutor: &R) -> String {
         self.build(resolutor, TextBuilder)
     }
-    pub fn to_pretty<R: TextResolutor<'a> + ?Sized>(&self, resolutor: &R) -> ColoredString {
+    pub fn to_pretty<R: TextResolutor<'a> + ?Sized>(&self, resolutor: &R) -> String {
         self.build(resolutor, PrettyTextBuilder)
     }
 }
 
-static mut DISPLAY_RESOLUTOR: &'static dyn for<'a> TextResolutor<'a> =
-    &NoResolutor as &'static dyn for<'a> TextResolutor<'a>;
-static mut INITIALIZED: bool = false;
+static DISPLAY_RESOLUTOR: OnceLock<&(dyn TextResolutor + Sync)> = OnceLock::new();
+type DisplayBuilder = fn(&TextComponent, &(dyn TextResolutor + Sync)) -> String;
+static DISPLAY_BUILDER: OnceLock<DisplayBuilder> = OnceLock::new();
 
-pub fn set_display_resolutor<T: for<'a> TextResolutor<'a>>(resolutor: &'static T) {
-    unsafe {
-        if !INITIALIZED {
-            DISPLAY_RESOLUTOR = resolutor as &'static dyn for<'a> TextResolutor<'a>;
-            INITIALIZED = true;
-        }
+pub fn set_display_resolutor(resolutor: &'static (impl TextResolutor + Sync)) {
+    DISPLAY_RESOLUTOR.get_or_init(|| resolutor);
+}
+pub fn set_display_builder(f: fn(&TextComponent, &(dyn TextResolutor + Sync)) -> String) {
+    DISPLAY_BUILDER.get_or_init(|| f);
+}
+
+impl ToString for TextComponent {
+    fn to_string(&self) -> String {
+        self.to_plain(*DISPLAY_RESOLUTOR.get_or_init(|| &NoResolutor))
     }
 }
 
-impl Display for RawTextComponent<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", unsafe { self.to_plain(DISPLAY_RESOLUTOR) })
-    }
-}
-
-impl<'a> Pointer for RawTextComponent<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", unsafe { self.to_pretty(DISPLAY_RESOLUTOR) })
+impl TextComponent {
+    pub fn log(&self) -> String {
+        DISPLAY_BUILDER
+            .get_or_init(|| |component, resolutor| component.build(resolutor, PrettyTextBuilder))(
+            self,
+            *DISPLAY_RESOLUTOR.get_or_init(|| &NoResolutor),
+        )
     }
 }
 

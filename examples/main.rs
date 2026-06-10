@@ -166,6 +166,6 @@ fn main() {
         "\nNBT (SNBT):\ntellraw @a {}",
         component.build(&EmptyResolutor, NbtBuilder).to_snbt()
     );
-    println!("\nText:\n{}", component);
-    println!("\nPretty Text:\n{:p}", component);
+    println!("\nText:\n{}", component.to_string());
+    println!("\nPretty Text:\n{}", component.log());
 }
