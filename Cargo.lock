@@ -634,7 +634,6 @@ name = "text_components"
 version = "0.1.7"
 dependencies = [
  "chrono",
- "colored",
  "databake",
  "heck",
  "memchr",

@@ -57,7 +57,7 @@ impl Display for SnbtError {
 pub type SnbtResult<T> = Result<T, SnbtError>;
 
 impl<'a> RawTextComponent<'a> {
-    pub fn from_snbt(string: &'a str) -> SnbtResult<RawTextComponent<'a>> {
+    pub fn from_snbt(string: &str) -> SnbtResult<RawTextComponent<'a>> {
         parse_body(None, &mut string.chars().peekable())
     }
 }

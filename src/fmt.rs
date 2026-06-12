@@ -1,5 +1,6 @@
 use crate::{
     RawTextComponent,
+    TextComponent,
     content::{Content, Object},
     format::{Color, Format},
     interactivity::{ClickEvent, Interactivity},
@@ -243,24 +244,25 @@ impl<'a> BuildTarget<'a> for PrettyTextBuilder {
 }
 
 impl<'a> RawTextComponent<'a> {
-    pub fn to_plain<R: TextResolutor<'a> + ?Sized>(&self, resolutor: &R) -> String {
+    pub fn to_plain<R: TextResolutor<'a> + ?Sized>(&self, resolutor: &'a R) -> String {
         self.build(resolutor, TextBuilder)
     }
-    pub fn to_pretty<R: TextResolutor<'a> + ?Sized>(&self, resolutor: &R) -> String {
+    pub fn to_pretty<R: TextResolutor<'a> + ?Sized>(&self, resolutor: &'a R) -> String {
         self.build(resolutor, PrettyTextBuilder)
     }
 }
 
-static DISPLAY_RESOLUTOR: OnceLock<&(dyn TextResolutor + Sync)> = OnceLock::new();
-type DisplayBuilder = fn(&TextComponent, &(dyn TextResolutor + Sync)) -> String;
+static DISPLAY_RESOLUTOR: OnceLock<&'static (dyn TextResolutor<'static> + Sync)> = OnceLock::new();
+type DisplayBuilder = fn(&TextComponent, &'static (dyn TextResolutor<'static> + Sync)) -> String;
 static DISPLAY_BUILDER: OnceLock<DisplayBuilder> = OnceLock::new();
 
-pub fn set_display_resolutor(resolutor: &'static (impl TextResolutor + Sync)) {
+pub fn set_display_resolutor(resolutor: &'static (impl TextResolutor<'static> + Sync)) {
     DISPLAY_RESOLUTOR.get_or_init(|| resolutor);
 }
-pub fn set_display_builder(f: fn(&TextComponent, &(dyn TextResolutor + Sync)) -> String) {
+pub fn set_display_builder(f: DisplayBuilder) {
     DISPLAY_BUILDER.get_or_init(|| f);
 }
+
 
 impl ToString for TextComponent {
     fn to_string(&self) -> String {
@@ -270,11 +272,8 @@ impl ToString for TextComponent {
 
 impl TextComponent {
     pub fn log(&self) -> String {
-        DISPLAY_BUILDER
-            .get_or_init(|| |component, resolutor| component.build(resolutor, PrettyTextBuilder))(
-            self,
-            *DISPLAY_RESOLUTOR.get_or_init(|| &NoResolutor),
-        )
+        let builder = DISPLAY_BUILDER.get_or_init(|| |component, resolutor| component.build(resolutor, PrettyTextBuilder));
+        builder(self, *DISPLAY_RESOLUTOR.get_or_init(|| &NoResolutor))
     }
 }
 
