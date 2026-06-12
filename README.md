@@ -65,7 +65,7 @@ println!("{}", component.log());
 ```
 
 If you want the log display format different to be able to parse it later, it can be done through `set_display_builder`, 
-which will need a function returning the builded string, this is an example with the PrettyTextBuilder (the default one):
+which will need a function returning the built string, this is an example with the PrettyTextBuilder (the default one):
 
 ```rs
 set_display_builder(|component, resolutor| component.build(resolutor, PrettyTextBuilder))
