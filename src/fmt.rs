@@ -1,6 +1,5 @@
 use crate::{
-    RawTextComponent,
-    TextComponent,
+    RawTextComponent, TextComponent,
     content::{Content, Object},
     format::{Color, Format},
     interactivity::{ClickEvent, Interactivity},
@@ -263,7 +262,6 @@ pub fn set_display_builder(f: DisplayBuilder) {
     DISPLAY_BUILDER.get_or_init(|| f);
 }
 
-
 impl ToString for TextComponent {
     fn to_string(&self) -> String {
         self.to_plain(*DISPLAY_RESOLUTOR.get_or_init(|| &NoResolutor))
@@ -272,7 +270,8 @@ impl ToString for TextComponent {
 
 impl TextComponent {
     pub fn log(&self) -> String {
-        let builder = DISPLAY_BUILDER.get_or_init(|| |component, resolutor| component.build(resolutor, PrettyTextBuilder));
+        let builder = DISPLAY_BUILDER
+            .get_or_init(|| |component, resolutor| component.build(resolutor, PrettyTextBuilder));
         builder(self, *DISPLAY_RESOLUTOR.get_or_init(|| &NoResolutor))
     }
 }
