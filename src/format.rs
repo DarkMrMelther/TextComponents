@@ -1,4 +1,3 @@
-use colored::{ColoredString, Colorize};
 use std::{borrow::Cow, fmt::Display};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -217,28 +216,34 @@ impl Color {
         }
         None
     }
-
-    pub fn colorize_text(&self, text: impl Into<String>) -> ColoredString {
-        let text = text.into();
-        match self {
-            Color::Black => text.black(),
-            Color::DarkBlue => text.blue(),
-            Color::DarkGreen => text.green(),
-            Color::DarkAqua => text.cyan(),
-            Color::DarkRed => text.red(),
-            Color::DarkPurple => text.magenta(),
-            Color::Gold => text.yellow(),
-            Color::Gray => text.white(),
-            Color::DarkGray => text.bright_black(),
-            Color::Blue => text.bright_blue(),
-            Color::Green => text.bright_green(),
-            Color::Aqua => text.bright_cyan(),
-            Color::Red => text.bright_red(),
-            Color::LightPurple => text.bright_magenta(),
-            Color::Yellow => text.bright_yellow(),
-            Color::White => text.bright_white(),
-            Color::Rgb(r, g, b) => text.truecolor(*r, *g, *b),
-        }
+    pub fn colorize_text(&self, text: &mut String) {
+        let rgb = if let Color::Rgb(r, g, b) = self {
+            format!("\x1b[38;2;{r};{g};{b}m")
+        } else {
+            String::new()
+        };
+        text.insert_str(
+            0,
+            match self {
+                Color::Black => "\x1b[30m",
+                Color::DarkBlue => "\x1b[34m",
+                Color::DarkGreen => "\x1b[32m",
+                Color::DarkAqua => "\x1b[36m",
+                Color::DarkRed => "\x1b[31m",
+                Color::DarkPurple => "\x1b[35m",
+                Color::Gold => "\x1b[33m",
+                Color::Gray => "\x1b[37m",
+                Color::DarkGray => "\x1b[90m",
+                Color::Blue => "\x1b[94m",
+                Color::Green => "\x1b[92m",
+                Color::Aqua => "\x1b[96m",
+                Color::Red => "\x1b[91m",
+                Color::LightPurple => "\x1b[95m",
+                Color::Yellow => "\x1b[93m",
+                Color::White => "\x1b[97m",
+                Color::Rgb(..) => &rgb,
+            },
+        );
     }
 }
 

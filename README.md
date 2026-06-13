@@ -46,7 +46,7 @@ component.resolve(resolutor).serialize(serializer);
 
 ### Displaying TextComponents
 
-TextComponent implements Display for easy logging, as you can see, a component
+TextComponent implements ToString for easy logging, as you can see, a component
 needs to be resolved before building it into any format, by default it uses a static
 reference to NoResolutor, but can be changed to a custom one with:\
 (Resolutor must be static, or made inside the function call)
@@ -55,12 +55,20 @@ reference to NoResolutor, but can be changed to a custom one with:\
 set_display_resolutor(&Resolutor);
 ```
 
+
 A text component can be printed like a string like this:
 
 ```rs
-println!("{}", component);
-// With format (pretty):
-println!("{:p}", component);
+println!("{}", component.to_string());
+// With format (colorful):
+println!("{}", component.log());
+```
+
+If you want the log display format different to be able to parse it later, it can be done through `set_display_builder`, 
+which will need a function returning the built string, this is an example with the PrettyTextBuilder (the default one):
+
+```rs
+set_display_builder(|component, resolutor| component.build(resolutor, PrettyTextBuilder))
 ```
 
 ### Roadmap
