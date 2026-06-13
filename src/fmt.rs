@@ -136,15 +136,15 @@ impl<'a> BuildTarget<'a> for TextBuilder {
     }
 }
 
-const URL_START: &'static str = "\x1b]8;;";
-const URL_SEPARATOR: &'static str = "\x1b\\";
-const URL_END: &'static str = "\x1b]8;;\x1b\\";
-const BOLD: &'static str = "\x1b[1m";
-const ITALIC: &'static str = "\x1b[3m";
-const UNDERLINED: &'static str = "\x1b[4m";
-const STRIKETHROUGH: &'static str = "\x1b[9m";
-const BG_COLOR: &'static str = "\x1b[48;2;";
-const RESET: &'static str = "\x1b[0m";
+const URL_START: &str = "\x1b]8;;";
+const URL_SEPARATOR: &str = "\x1b\\";
+const URL_END: &str = "\x1b]8;;\x1b\\";
+const BOLD: &str = "\x1b[1m";
+const ITALIC: &str = "\x1b[3m";
+const UNDERLINED: &str = "\x1b[4m";
+const STRIKETHROUGH: &str = "\x1b[9m";
+const BG_COLOR: &str = "\x1b[48;2;";
+const RESET: &str = "\x1b[0m";
 pub struct PrettyTextBuilder;
 impl<'a> BuildTarget<'a> for PrettyTextBuilder {
     type Result = String;
@@ -238,7 +238,6 @@ impl<'a> BuildTarget<'a> for PrettyTextBuilder {
                 .collect::<Vec<String>>()
                 .concat()
         )
-        .into()
     }
 }
 
@@ -262,6 +261,7 @@ pub fn set_display_builder(f: DisplayBuilder) {
     DISPLAY_BUILDER.get_or_init(|| f);
 }
 
+#[allow(clippy::to_string_trait_impl)]
 impl ToString for TextComponent {
     fn to_string(&self) -> String {
         self.to_plain(*DISPLAY_RESOLUTOR.get_or_init(|| &NoResolutor))
