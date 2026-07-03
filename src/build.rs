@@ -4,6 +4,8 @@ use quote::quote;
 use serde_json::Value;
 use std::fs;
 
+use crate::translation::TranslationToken;
+
 /// Count the number of parameters in a translation string
 fn count_parameters(text: &str) -> usize {
     let sequential = text.matches("%s").count();
@@ -14,6 +16,40 @@ fn count_parameters(text: &str) -> usize {
         }
     }
     sequential.max(positional)
+}
+
+fn process_tokens(text: &str) -> (TokenStream, i32) {
+    let mut positions = vec![(0, 0, 0), (text.len(), 0, 0)];
+    for i in 1..=8 {
+        for (pos, _) in text.match_indices(&format!("%{i}$s")) {
+            positions.push((pos, i, 4usize));
+        }
+    }
+    for (counter, (pos, _)) in (1..).zip(text.match_indices("%s")) {
+        positions.push((pos, counter, 2usize));
+    }
+    positions.sort_by_key(|(pos, _, _)| *pos);
+    let mut positions = positions.into_iter().peekable();
+    let mut stream = TokenStream::new();
+    let mut amount = 0;
+    while let Some((pos, _, size)) = positions.next() {
+        let Some(next) = positions.peek() else {
+            break;
+        };
+        let text = text[pos + size..next.0].to_string();
+        let arg = next.1;
+        stream.extend(quote! {
+            TranslationToken::Text(Cow::borrow(#text)),
+        });
+        amount += 1;
+        if arg > 0 {
+            stream.extend(quote! {
+                TranslationToken::Arg(#arg),
+            });
+            amount += 1;
+        }
+    }
+    (quote! {[#stream]}, amount)
 }
 
 pub fn build_translations(path: &str) -> TokenStream {
@@ -30,7 +66,11 @@ pub fn build_translations(path: &str) -> TokenStream {
     // Add imports
     stream.extend(quote! {
         #![allow(dead_code)]
-        use text_components::translation::Translation;
+        use text_components::{
+            translation::{Translation, TranslationToken},
+            build::TranslationsRegistry
+        };
+        use std::borrow::Cow;
     });
 
     // Generate constants for each translation
@@ -39,6 +79,7 @@ pub fn build_translations(path: &str) -> TokenStream {
 
     // Track used constant names to handle collisions
     let mut used_names = rustc_hash::FxHashMap::default();
+    let mut register_stream = TokenStream::new();
 
     for (key, value) in translations_vec {
         let Some(text) = value.as_str() else {
@@ -67,12 +108,34 @@ pub fn build_translations(path: &str) -> TokenStream {
         }
 
         let const_name = Ident::new(&const_name_str, Span::call_site());
+        let (translation_tokens, tokens_amount) = process_tokens(text);
+        let token_const_name = Ident::new(&format!("{const_name_str}_TOKEN"), Span::call_site());
 
         stream.extend(quote! {
             #[doc = #text]
             pub static #const_name: Translation<#param_count> = Translation(#key);
+            static #token_const_name: [TranslationToken<'static>; #tokens_amount] = #translation_tokens;
+        });
+
+        register_stream.extend(quote! {
+            registry.register("en", #key, &#token_const_name);
         });
     }
 
+    stream.extend(quote! {
+        fn register_translations<R: TranslationsRegistry>(registry: &mut R) {
+            #register_stream
+        }
+    });
+
     stream
+}
+
+pub trait TranslationsRegistry {
+    fn register(
+        &mut self,
+        locale: &'static str,
+        key: &'static str,
+        translation: &'static [TranslationToken<'static>],
+    );
 }

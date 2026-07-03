@@ -1,4 +1,4 @@
-use crate::RawTextComponent;
+use crate::{RawTextComponent, resolving::TextResolutor};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -31,18 +31,15 @@ impl Payload {
     }
 }
 
-pub trait CustomRegistry<'a> {
-    type Data;
-    fn register_content<T: CustomContent<'a>>(&mut self, id: &'a str, content: T);
-    fn get_content(&self, id: String) -> Box<dyn CustomContent<'_, Reg = Self>>;
+pub trait CustomContentExt<'a> {
+    fn as_data(&self) -> CustomData<'a>;
 }
 
-pub trait CustomContent<'a> {
-    type Reg: CustomRegistry<'a>;
-    fn as_data(&self) -> CustomData<'a>;
+pub trait CustomContent<'a, Ctx>: CustomContentExt<'a> {
     fn resolve(
         &self,
-        data: <Self::Reg as CustomRegistry<'a>>::Data,
+        resolutor: &dyn TextResolutor<'a>,
+        context: Ctx,
         payload: Payload,
     ) -> RawTextComponent<'a>;
 }
@@ -55,8 +52,11 @@ impl<'a> From<CustomData<'a>> for RawTextComponent<'a> {
         }
     }
 }
-impl<'a, T: CustomContent<'a> + 'a> From<T> for RawTextComponent<'a> {
+impl<'a, T: CustomContentExt<'a>> From<T> for RawTextComponent<'a> {
     fn from(value: T) -> Self {
-        RawTextComponent::custom(value)
+        RawTextComponent {
+            content: crate::content::Content::Custom(value.as_data()),
+            ..Default::default()
+        }
     }
 }

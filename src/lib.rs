@@ -1,10 +1,10 @@
 #[cfg(feature = "custom")]
-use crate::custom::CustomContent;
+use crate::custom::CustomContentExt;
 use crate::{
     content::{Content, NbtSource, Object, ObjectPlayer, Resolvable},
     format::{Color, Format},
     interactivity::{ClickEvent, HoverEvent, Interactivity},
-    translation::TranslatedMessage,
+    translation::TranslatedContent,
 };
 use std::borrow::Cow;
 
@@ -156,7 +156,7 @@ impl<'a> RawTextComponent<'a> {
         }
     }
 
-    /// Creates a [TextComponent] of a [TranslatedMessage], it's recommended using a compiled
+    /// Creates a [TextComponent] of a [TranslatedContent], it's recommended using a compiled
     /// [Translation](crate::translation::Translation) which forces you to give it the right amount of arguments.
     /// ## Examples
     /// #### For a translation without arguments:
@@ -177,7 +177,7 @@ impl<'a> RawTextComponent<'a> {
     /// // Results in "The Rust compiler was killed by you using magic".
     /// TextComponent::translated(DEATH_ATTACK_INDIRECT_MAGIC.message(["The Rust compiler", "you"]));
     /// ```
-    pub const fn translated(message: TranslatedMessage<'a>) -> Self {
+    pub const fn translated(message: TranslatedContent<'a>) -> Self {
         RawTextComponent {
             content: Content::Translate(message),
             children: vec![],
@@ -305,7 +305,7 @@ impl<'a> RawTextComponent<'a> {
     }
 
     #[cfg(feature = "custom")]
-    pub fn custom(content: impl CustomContent<'a> + 'a) -> RawTextComponent<'a> {
+    pub fn custom(content: impl CustomContentExt<'a> + 'a) -> RawTextComponent<'a> {
         RawTextComponent {
             content: Content::Custom(content.as_data()),
             children: vec![],
@@ -336,7 +336,7 @@ pub trait Modifier<'a> {
     type Output;
     /// Adds a child at the end of a text component
     fn add_child<T: Into<RawTextComponent<'a>>>(self, child: T) -> Self::Output;
-    /// Appends a [vec] of [Into]<[TextComponent]> as children of this component
+    /// Appends a [vec] of [Into]<[RawTextComponent]> as children of this component
     fn add_children<T: Into<RawTextComponent<'a>>>(self, children: Vec<T>) -> Self::Output;
     /// Sets the Shift+Click chat insertion string
     fn insertion<T: Into<Cow<'a, str>>>(self, insertion: T) -> Self::Output;

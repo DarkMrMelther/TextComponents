@@ -3,7 +3,8 @@ use crate::{
     content::{Content, Object},
     format::{Color, Format},
     interactivity::{ClickEvent, Interactivity},
-    resolving::{BuildTarget, NoResolutor, TextResolutor},
+    resolving::{BuildTarget, NoResolutor, RESOLUTION_HELPER, TextResolutor},
+    translation::TranslationTokenArray,
 };
 use rand::random_range;
 use std::{
@@ -69,38 +70,23 @@ impl TextBuilder {
     ) -> String {
         match &component.content {
             Content::Text { text } => text.to_string(),
-            Content::Translate(message) => {
-                let translated = match resolutor.translate(&message.key) {
-                    Some(t) => t,
-                    None => match &message.fallback {
-                        Some(f) => return f.to_string(),
-                        None => return format!("[Translation: {}]", message.key),
-                    },
-                };
-                let parts = resolutor.split_translation(translated);
-                let mut built_parts = vec![];
-                for (part, pos) in parts {
-                    let component_part = RawTextComponent {
-                        content: part.into(),
-                        format: component.format.clone(),
-                        ..RawTextComponent::new()
-                    };
-                    built_parts.push(target.build_component(resolutor, &component_part));
-                    if pos != 0
-                        && let Some(args) = &message.args
-                        && pos <= args.len()
-                        && let Some(arg) = args.get(pos - 1)
-                    {
-                        let arg_part = RawTextComponent {
-                            content: arg.content.clone(),
-                            children: arg.children.clone(),
-                            format: arg.format.mix(&component.format),
-                            interactions: arg.interactions.clone(),
-                        };
-                        built_parts.push(target.build_component(resolutor, &arg_part));
+            Content::Translate(content) => {
+                match RESOLUTION_HELPER
+                    .get()
+                    .and_then(|h| h.translate(resolutor.locale(), &content.key))
+                {
+                    Some(t) => {
+                        let mut translated_component = t.component(&content.args);
+                        translated_component.format =
+                            translated_component.format.mix(&component.format);
+                        translated_component.interactions = component.interactions.clone();
+                        target.build_component(resolutor, &translated_component)
                     }
+                    None => match &content.fallback {
+                        Some(f) => f.to_string(),
+                        None => format!("[Translation: {}]", content.key),
+                    },
                 }
-                built_parts.concat()
             }
             Content::Keybind { keybind } => format!("[Keybind: {}]", keybind),
             Content::Object(Object::Atlas { sprite, .. }) => format!("[Object: {}]", sprite),
@@ -156,10 +142,8 @@ impl<'a> BuildTarget<'a> for PrettyTextBuilder {
         let mut final_text = TextBuilder::stringify_content(self, resolutor, component);
 
         if let Content::Translate(_) = component.content {
-            return format!(
-                "{}{}",
-                final_text,
-                component
+            return final_text
+                + &component
                     .children
                     .iter()
                     .map(|child| {
@@ -172,8 +156,15 @@ impl<'a> BuildTarget<'a> for PrettyTextBuilder {
                         self.build_component(resolutor, &child)
                     })
                     .collect::<Vec<String>>()
-                    .concat()
-            );
+                    .concat();
+        }
+
+        if let Some(ClickEvent::OpenUrl { url }) = &component.interactions.click {
+            final_text = if supports_hyperlinks() {
+                format!("{URL_START}{}{URL_SEPARATOR}{}{URL_END}", url, final_text)
+            } else {
+                format!("{final_text} ({url})")
+            };
         }
 
         if let Some(true) = component.format.obfuscated {
@@ -212,11 +203,6 @@ impl<'a> BuildTarget<'a> for PrettyTextBuilder {
                     (color & 0xFF) as u8,
                 ),
             );
-        }
-        if supports_hyperlinks()
-            && let Some(ClickEvent::OpenUrl { url }) = &component.interactions.click
-        {
-            final_text = format!("{URL_START}{}{URL_SEPARATOR}{}{URL_END}", url, final_text);
         }
         final_text.push_str(RESET);
 

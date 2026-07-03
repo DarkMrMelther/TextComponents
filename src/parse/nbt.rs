@@ -1,10 +1,11 @@
+#[cfg(feature = "custom")]
+use crate::custom::CustomData;
 use crate::{
     TextComponent,
     content::{Content, NbtSource, Object, ObjectPlayer, PlayerProperties, Resolvable},
-    custom::CustomData,
     format::{Color, Format},
     interactivity::{ClickEvent, HoverEvent, Interactivity},
-    translation::TranslatedMessage,
+    translation::TranslatedContent,
 };
 
 use simdnbt::owned::{NbtCompound, NbtList, NbtTag};
@@ -84,7 +85,7 @@ impl<'a> Content<'a> {
                 args = Some(args_vec.into_boxed_slice());
             }
 
-            return Some(Content::Translate(TranslatedMessage {
+            return Some(Content::Translate(TranslatedContent {
                 key: key.to_string().into(),
                 fallback,
                 args,

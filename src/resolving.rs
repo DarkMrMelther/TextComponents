@@ -1,11 +1,38 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 #[cfg(feature = "custom")]
 use crate::custom::CustomData;
 use crate::{
     RawTextComponent,
     content::{Content, Resolvable},
+    translation::TranslationToken,
 };
+
+pub(crate) static RESOLUTION_HELPER: OnceLock<Arc<dyn for<'a> ResolutionHelper<'a> + Send + Sync>> =
+    OnceLock::new();
+
+pub fn set_resolution_helper(resolutor: Arc<dyn for<'a> ResolutionHelper<'a> + Send + Sync>) {
+    RESOLUTION_HELPER.get_or_init(|| resolutor);
+}
+
+/// Trait to provide global data for resolving content within a text component.
+pub trait ResolutionHelper<'a> {
+    /// Resolves a custom data block into an optional `RawTextComponent`.
+    ///
+    /// Only available when the `custom` feature is enabled. Return `None` if
+    /// the custom ID is not recognized or cannot be resolved.
+    #[cfg(feature = "custom")]
+    fn resolve_custom(
+        &self,
+        resolutor: &dyn TextResolutor<'a>,
+        data: &CustomData<'a>,
+    ) -> Option<RawTextComponent<'a>>;
+
+    /// Translates a given translation key into pre-compiled [TranslationToken]s.
+    ///
+    /// Returns `None` if the key is unknown.
+    fn translate(&self, locale: &str, key: &str) -> Option<&[TranslationToken<'a>]>;
+}
 
 /// Trait for resolving dynamic content within a text component.
 ///
@@ -16,7 +43,7 @@ use crate::{
 /// live data.
 ///
 /// # Recommendation
-/// Implement this on the `World` and `Player` types in your application.
+/// Implement this on the `World`, `Player`, and `Entity` types / traits in your application.
 pub trait TextResolutor<'a> {
     /// Fallback resolution for any `Content` variant that is not explicitly handled.
     ///
@@ -34,69 +61,36 @@ pub trait TextResolutor<'a> {
     /// or a formatted NBT tag).
     fn resolve_content(&self, resolvable: &Resolvable<'a>) -> RawTextComponent<'a>;
 
-    /// Resolves a custom data block into an optional `RawTextComponent`.
-    ///
-    /// Only available when the `custom` feature is enabled. Return `None` if
-    /// the custom ID is not recognized or cannot be resolved.
-    #[cfg(feature = "custom")]
-    fn resolve_custom(&self, data: &CustomData<'a>) -> Option<RawTextComponent<'a>>;
+    /// Returns the current locale of the resolver
+    fn locale(&self) -> &str {
+        "en"
+    }
 
-    /// Translates a given translation key into a human-readable string.
+    /// Returns the ID of the resolving entity, if available.
     ///
-    /// Returns `None` if the key is unknown. The returned string may contain
-    /// parameter placeholders (`%s` or `%n$s`) that will be processed by
-    /// `split_translation`.
-    fn translate(&self, key: &str) -> Option<String>;
-
-    /// Splits a translation string into segments and parameter indices.
-    ///
-    /// This method parses placeholders like `%s` (sequential) and `%n$s`
-    /// (positional) and returns a vector of `(text, param_index)`. The
-    /// `text` part is the literal substring, and `param_index` is the
-    /// 1‑based argument position (or 0 for trailing text). The default
-    /// implementation handles up to 8 positional parameters and any number
-    /// of sequential ones.
-    ///
-    /// You may override this if your translation format differs.
-    fn split_translation(&self, text: String) -> Vec<(String, usize)> {
-        let mut positions = vec![(0, 0, 0), (text.len(), 0, 0)];
-        for i in 1..=8 {
-            for (pos, _) in text.match_indices(&format!("%{i}$s")) {
-                positions.push((pos, i, 4usize));
-            }
-        }
-        for (counter, (pos, _)) in (1..).zip(text.match_indices("%s")) {
-            positions.push((pos, counter, 2usize));
-        }
-        positions.sort_by_key(|(pos, _, _)| *pos);
-        let mut translation = vec![];
-        let mut positions = positions.into_iter().peekable();
-        while let Some((pos, _, size)) = positions.next() {
-            let Some(next) = positions.peek() else {
-                break;
-            };
-            translation.push((text[pos + size..next.0].to_string(), next.1));
-        }
-        translation
+    /// Useful to get data from the receiver in custom contents.
+    fn entity_id(&self) -> Option<i32> {
+        None
     }
 }
 
 impl<'a, T: TextResolutor<'a>> TextResolutor<'a> for Arc<T> {
+    fn resolve_other(&self, content: &Content<'a>) -> RawTextComponent<'a> {
+        (**self).resolve_other(content)
+    }
+
     fn resolve_content(&self, resolvable: &Resolvable<'a>) -> RawTextComponent<'a> {
         (**self).resolve_content(resolvable)
     }
+}
 
-    #[cfg(feature = "custom")]
-    fn resolve_custom(&self, data: &CustomData<'a>) -> Option<RawTextComponent<'a>> {
-        (**self).resolve_custom(data)
+impl<'a, T: TextResolutor<'a> + ?Sized> TextResolutor<'a> for &T {
+    fn resolve_other(&self, content: &Content<'a>) -> RawTextComponent<'a> {
+        (**self).resolve_other(content)
     }
 
-    fn translate(&self, key: &str) -> Option<String> {
-        (**self).translate(key)
-    }
-
-    fn split_translation(&self, text: String) -> Vec<(String, usize)> {
-        (**self).split_translation(text)
+    fn resolve_content(&self, resolvable: &Resolvable<'a>) -> RawTextComponent<'a> {
+        (**self).resolve_content(resolvable)
     }
 }
 
@@ -118,15 +112,6 @@ impl<'a> TextResolutor<'a> for NoResolutor {
             }
             Resolvable::NBT { path, .. } => RawTextComponent::plain(format!("[Nbt: {path}]")),
         }
-    }
-
-    #[cfg(feature = "custom")]
-    fn resolve_custom(&self, data: &crate::custom::CustomData<'a>) -> Option<RawTextComponent<'a>> {
-        Some(RawTextComponent::plain(data.id.clone()))
-    }
-
-    fn translate(&self, _key: &str) -> Option<String> {
-        None
     }
 }
 
@@ -179,7 +164,7 @@ impl<'a> RawTextComponent<'a> {
     ///
     /// This replaces `Resolvable` and `Custom` content with actual components
     /// obtained from the `resolutor`, and also resolves arguments inside
-    /// `TranslatedMessage`, separators for entity/NBT resolvables, and children.
+    /// `TranslatedContent`, separators for entity/NBT resolvables, and children.
     /// Formatting and interactivity are merged appropriately.
     ///
     /// The returned component is fully static (no more `Resolvable` leaves)
@@ -187,9 +172,10 @@ impl<'a> RawTextComponent<'a> {
     pub fn resolve<R: TextResolutor<'a> + ?Sized>(&self, resolutor: &R) -> RawTextComponent<'a> {
         let mut component = match &self.content {
             #[cfg(feature = "custom")]
-            Content::Custom(data) => resolutor
-                .resolve_custom(data)
-                .unwrap_or(RawTextComponent::new()),
+            Content::Custom(data) => RESOLUTION_HELPER
+                .get()
+                .and_then(|h| h.resolve_custom(&resolutor, data))
+                .unwrap_or_default(),
             Content::Resolvable(resolvable) => resolutor.resolve_content(resolvable),
             content => resolutor.resolve_other(content),
         };

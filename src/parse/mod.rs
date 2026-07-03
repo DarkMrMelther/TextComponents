@@ -5,7 +5,7 @@ use crate::{
     content::{Content, NbtSource, Object, ObjectPlayer, PlayerProperties, Resolvable},
     format::{Color, Format},
     interactivity::{ClickEvent, HoverEvent, Interactivity},
-    translation::TranslatedMessage,
+    translation::TranslatedContent,
 };
 use std::{borrow::Cow, error::Error, fmt::Display, iter::Peekable, ops::AddAssign, str::Chars};
 use uuid::Uuid;
@@ -259,7 +259,7 @@ fn match_content(
                 if let Some(Content::Translate(msg)) = &mut compound.contents[1] {
                     msg.key = Cow::Owned(parse_string(first, chars)?);
                 } else {
-                    compound.contents[1] = Some(Content::Translate(TranslatedMessage {
+                    compound.contents[1] = Some(Content::Translate(TranslatedContent {
                         key: Cow::Owned(parse_string(first, chars)?),
                         fallback: None,
                         args: None,
@@ -274,7 +274,7 @@ fn match_content(
                 if let Some(Content::Translate(msg)) = &mut compound.contents[1] {
                     msg.fallback = Some(Cow::Owned(parse_string(first, chars)?));
                 } else {
-                    compound.contents[1] = Some(Content::Translate(TranslatedMessage {
+                    compound.contents[1] = Some(Content::Translate(TranslatedContent {
                         key: Cow::Borrowed(""),
                         fallback: Some(Cow::Owned(parse_string(first, chars)?)),
                         args: None,
@@ -289,7 +289,7 @@ fn match_content(
                 if let Some(Content::Translate(msg)) = &mut compound.contents[1] {
                     msg.args = Some(parse_vec(chars)?.into_boxed_slice());
                 } else {
-                    compound.contents[1] = Some(Content::Translate(TranslatedMessage {
+                    compound.contents[1] = Some(Content::Translate(TranslatedContent {
                         key: Cow::Borrowed(""),
                         fallback: None,
                         args: Some(parse_vec(chars)?.into_boxed_slice()),
@@ -505,10 +505,11 @@ fn match_content(
         }
         #[cfg(feature = "custom")]
         "custom" => {
-            if first == '{' {
-                compound.contents[8] = Some(Content::Custom(parse_custom(chars)?));
+            if first != '{' {
+                return Err(SnbtError::WrongContentType(name.to_string()));
             }
-            Err(SnbtError::WrongContentType(name.to_string()))
+            compound.contents[8] = Some(Content::Custom(parse_custom(chars)?));
+            Ok(())
         }
         _ => {
             unknown.add_assign(1);

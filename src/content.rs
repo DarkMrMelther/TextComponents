@@ -1,7 +1,7 @@
 #[cfg(feature = "custom")]
 use crate::custom::CustomData;
 use crate::{
-    RawTextComponent, format::Format, interactivity::Interactivity, translation::TranslatedMessage,
+    RawTextComponent, format::Format, interactivity::Interactivity, translation::TranslatedContent,
 };
 use std::borrow::Cow;
 
@@ -15,7 +15,7 @@ pub enum Content<'a> {
     Text {
         text: Cow<'a, str>,
     },
-    Translate(TranslatedMessage<'a>),
+    Translate(TranslatedContent<'a>),
     Keybind {
         keybind: Cow<'a, str>,
     },
